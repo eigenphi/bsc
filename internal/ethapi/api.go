@@ -19,9 +19,11 @@ package ethapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"strings"
 	"time"
 
@@ -42,6 +44,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/downstream"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
@@ -673,6 +676,48 @@ func (s *PublicBlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.B
 		return response, err
 	}
 	return nil, err
+}
+
+func (s *PublicBlockChainAPI) DumpBlock(ctx context.Context, start rpc.BlockNumber, end rpc.BlockNumber, file string) error {
+	f, err := os.Create(file)
+	if err != nil {
+		return err
+	}
+
+	latest := s.b.CurrentHeader()
+	if end > rpc.BlockNumber(latest.Number.Uint64()) {
+		return fmt.Errorf("end block is bigger than current header number")
+	}
+
+	for num := start; num <= end; num++ {
+		block, err := s.b.BlockByNumber(ctx, num)
+		if err != nil {
+			return err
+		}
+
+		receipts, err := s.b.GetReceipts(ctx, block.Hash())
+		if err != nil {
+			return err
+		}
+
+		total, err := downstream.NewTotalOut(s.b.ChainConfig(), block, receipts)
+		if err != nil {
+			return err
+		}
+
+		da, err := json.Marshal(total)
+		if err != nil {
+			return err
+		}
+
+		da = append(da, []byte{'\n'}...)
+		_, err = f.Write(da)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // GetBlockByHash returns the requested block. When fullTx is true all transactions in the block are returned in full
