@@ -928,6 +928,11 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 
 func (bc *BlockChain) setupDownstreamConn(block *types.Block) {
 	var err error
+	if bc.downstreamConn != nil && !bc.downstreamConn.IsClosed() {
+		// make sure existing connection closed
+		defer bc.downstreamConn.Close()
+		log.Warn("Close connection to downstream")
+	}
 	for {
 		bc.downstreamConn, err = amqp.Dial(bc.downstreamConfig.URIs[bc.downstreamSeq%len(bc.downstreamConfig.URIs)])
 		bc.downstreamSeq += 1
