@@ -8,6 +8,7 @@ Exchange = "test-exchange"
 RoutingKey = "test-key"
 RetryInterval = 500 #ms
 TimeoutInterval = 5000 #ms
+Compress = true # enable message compress with GZIP before publish
 ```
 
 # 通过RPC导出Block信息到文件

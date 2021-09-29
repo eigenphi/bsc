@@ -6,4 +6,5 @@ type DownstreamConfig struct {
 	RoutingKey      string   `toml:",omitempty"`
 	RetryInterval   int      `toml:",omitempty"` //in millsecond
 	TimeoutInterval int      `toml:",omitempty"` //in millsecond
+	Compress        bool     `toml:",omitempty"`
 }
