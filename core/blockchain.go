@@ -1051,6 +1051,7 @@ func (bc *BlockChain) sendBlockToDownstream(block *types.Block) {
 				ContentEncoding: "",
 				Body:            data,
 				DeliveryMode:    amqp.Persistent,
+				Timestamp:       time.Now(),
 				Priority:        0,
 			},
 		)
