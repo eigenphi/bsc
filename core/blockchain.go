@@ -1056,6 +1056,8 @@ func (bc *BlockChain) sendBlockToDownstream(block *types.Block) {
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 
+	var prevErrorMessage = ""
+
 	for {
 		if timeoutTimer != nil {
 			timeoutTimer.Stop()
@@ -1083,17 +1085,23 @@ func (bc *BlockChain) sendBlockToDownstream(block *types.Block) {
 			log.Error("Send data to downstream error", "block hash", block.Hash().Hex(), "block number", block.NumberU64(), "err", err)
 			time.Sleep(time.Millisecond * time.Duration(bc.downstreamConfig.RetryInterval))
 			bc.setupDownstreamConn(block)
+			prevErrorMessage = err.Error()
 			continue
+		} else if prevErrorMessage != "" {
+			log.Info("Send data to downstream recover", "prevErrorMessage", prevErrorMessage)
+			prevErrorMessage = ""
 		}
 
 		select {
 		case confirm := <-bc.downstreamConfirm:
 			if !confirm.Ack {
 				log.Error("Send data without ack confirm", "block hash", block.Hash().Hex(), "block number", block.NumberU64())
+				prevErrorMessage = "Send data without ack confirm"
 				continue
 			}
 		case <-timeoutTimer.C:
 			log.Error("Send data timeout", "block hash", block.Hash().Hex(), "block number", block.NumberU64())
+			prevErrorMessage = "Send data timeout"
 			continue
 		case <-sigc:
 			break
