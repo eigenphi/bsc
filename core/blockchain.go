@@ -1063,6 +1063,10 @@ func (bc *BlockChain) sendBlockToDownstream(block *types.Block) {
 			timeoutTimer.Stop()
 		}
 
+		for len(bc.downstreamConfirm) > 0 {
+			<-bc.downstreamConfirm
+		}
+
 		timeoutTimer = time.NewTimer(timeoutDuration)
 
 		err = bc.downstreamChan.Publish(
