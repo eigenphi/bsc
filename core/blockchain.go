@@ -932,7 +932,7 @@ func (bc *BlockChain) setupDownstreamConn(block *types.Block) {
 	var err error
 	if bc.downstreamConn != nil && !bc.downstreamConn.IsClosed() {
 		// make sure existing connection closed
-		defer bc.downstreamConn.Close()
+		bc.downstreamConn.Close()
 		log.Warn("Close connection to downstream")
 	}
 	for {
