@@ -18,12 +18,12 @@
 package core
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"bytes"
-	"compress/gzip"
 	"math/big"
 	mrand "math/rand"
 	"os"
@@ -930,12 +930,15 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 
 func (bc *BlockChain) setupDownstreamConn(block *types.Block) {
 	var err error
-	if bc.downstreamConn != nil && !bc.downstreamConn.IsClosed() {
-		// make sure existing connection closed
-		bc.downstreamConn.Close()
-		log.Warn("Close connection to downstream")
-	}
+
 	for {
+		if bc.downstreamConn != nil && !bc.downstreamConn.IsClosed() {
+			log.Info("Try close connection")
+			// make sure existing connection closed
+			bc.downstreamConn.Close()
+			log.Warn("Close connection to downstream")
+		}
+
 		bc.downstreamConn, err = amqp.Dial(bc.downstreamConfig.URIs[bc.downstreamSeq%len(bc.downstreamConfig.URIs)])
 		bc.downstreamSeq += 1
 		if err != nil {
@@ -1106,6 +1109,8 @@ func (bc *BlockChain) sendBlockToDownstream(block *types.Block) {
 		case <-timeoutTimer.C:
 			log.Error("Send data timeout", "block hash", block.Hash().Hex(), "block number", block.NumberU64())
 			prevErrorMessage = "Send data timeout"
+			time.Sleep(time.Millisecond * time.Duration(bc.downstreamConfig.RetryInterval))
+			bc.setupDownstreamConn(block)
 			continue
 		case <-sigc:
 			break
