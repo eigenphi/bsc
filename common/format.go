@@ -55,6 +55,7 @@ var ageUnits = []struct {
 	{time.Hour, "h"},
 	{time.Minute, "m"},
 	{time.Second, "s"},
+	{time.Millisecond, "ms"},
 }
 
 // String implements the Stringer interface, allowing pretty printing of duration
@@ -62,7 +63,7 @@ var ageUnits = []struct {
 func (t PrettyAge) String() string {
 	// Calculate the time difference and handle the 0 cornercase
 	diff := time.Since(time.Time(t))
-	if diff < time.Second {
+	if diff < time.Millisecond {
 		return "0"
 	}
 	// Accumulate a precision of 3 components before returning

@@ -383,26 +383,13 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 		case <-w.startCh:
 			clearPending(w.chain.CurrentBlock().NumberU64())
 			timestamp = time.Now().Unix()
-			commit(true, commitInterruptNewHead)
+			commit(false, commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
-			if !w.isRunning() {
-				continue
-			}
 			clearPending(head.Block.NumberU64())
 			timestamp = time.Now().Unix()
-			if p, ok := w.engine.(*parlia.Parlia); ok {
-				signedRecent, err := p.SignRecently(w.chain, head.Block.Header())
-				if err != nil {
-					log.Info("Not allowed to propose block", "err", err)
-					continue
-				}
-				if signedRecent {
-					log.Info("Signed recently, must wait")
-					continue
-				}
-			}
-			commit(true, commitInterruptNewHead)
+
+			commit(false, commitInterruptNewHead)
 
 		case <-timer.C:
 			// If mining is running resubmit a new work cycle periodically to pull in
@@ -487,7 +474,7 @@ func (w *worker) mainLoop() {
 				start := time.Now()
 				if err := w.commitUncle(w.current, ev.Block.Header()); err == nil {
 					var uncles []*types.Header
-					w.commit(uncles, nil, false, start)
+					w.commit(uncles, nil, true, start)
 				}
 			}
 
@@ -976,34 +963,38 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	pending, err := w.eth.TxPool().Pending()
 	if err != nil {
 		log.Error("Failed to fetch pending transactions", "err", err)
+		return
 	}
 	// Short circuit if there is no available pending transactions
-	if len(pending) != 0 {
-		start := time.Now()
-		// Split the pending transactions into locals and remotes
-		localTxs, remoteTxs := make(map[common.Address]types.Transactions), pending
-		for _, account := range w.eth.TxPool().Locals() {
-			if txs := remoteTxs[account]; len(txs) > 0 {
-				delete(remoteTxs, account)
-				localTxs[account] = txs
-			}
-		}
-		if len(localTxs) > 0 {
-			txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
-			if w.commitTransactions(txs, w.coinbase, interrupt) {
-				return
-			}
-		}
-		if len(remoteTxs) > 0 {
-			txs := types.NewTransactionsByPriceAndNonce(w.current.signer, remoteTxs)
-			if w.commitTransactions(txs, w.coinbase, interrupt) {
-				return
-			}
-		}
-		commitTxsTimer.UpdateSince(start)
-		log.Info("Gas pool", "height", header.Number.String(), "pool", w.current.gasPool.String())
+	if len(pending) == 0 && atomic.LoadUint32(&w.noempty) == 0 {
+		w.updateSnapshot()
+		return
 	}
-	w.commit(uncles, w.fullTaskHook, false, tstart)
+	start := time.Now()
+	// Split the pending transactions into locals and remotes
+	localTxs, remoteTxs := make(map[common.Address]types.Transactions), pending
+	for _, account := range w.eth.TxPool().Locals() {
+		if txs := remoteTxs[account]; len(txs) > 0 {
+			delete(remoteTxs, account)
+			localTxs[account] = txs
+		}
+	}
+	if len(localTxs) > 0 {
+		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
+		if w.commitTransactions(txs, w.coinbase, interrupt) {
+			return
+		}
+	}
+	if len(remoteTxs) > 0 {
+		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, remoteTxs)
+		if w.commitTransactions(txs, w.coinbase, interrupt) {
+			return
+		}
+	}
+	commitTxsTimer.UpdateSince(start)
+	log.Info("Gas pool", "height", header.Number.String(), "pool", w.current.gasPool.String())
+
+	w.commit(uncles, w.fullTaskHook, true, tstart)
 }
 
 // commit runs any post-transaction state modifications, assembles the final block
