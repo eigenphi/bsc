@@ -19,10 +19,13 @@ package native
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/eth/tracers/protobuf"
+	"github.com/ethereum/go-ethereum/eth/tracers/types"
 	"github.com/ethereum/go-ethereum/signer/fourbyte"
 	"github.com/holiman/uint256"
 	"math/big"
@@ -58,13 +61,20 @@ type OpsCallFrame struct {
 func init() {
 	labelDb, _ = fourbyte.New()
 	register("OpsTracerNative", NewOpsTracer)
+	register("OpsPlainTracerNative", NewOpsPlainTracer)
 }
 
 func NewOpsTracer() tracers.Tracer {
 	return &OpsTracer{}
 }
 
+func NewOpsPlainTracer() tracers.Tracer {
+	return &OpsTracer{plain: true}
+}
+
 type OpsTracer struct {
+	plain bool
+
 	evm          *vm.EVM
 	callstack    OpsCallFrame
 	currentDepth int
@@ -168,7 +178,7 @@ func (t *OpsTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 			topic3 = scope.Stack.Back(5).String()[2:] // remove "0x" prefix
 			logInput = strings.Join([]string{topic0, topic1, topic2, topic3}, " ")
 		}
-		var label string = t.getLabel(topic0)
+		var label = t.getLabel(topic0)
 		frame := OpsCallFrame{
 			Type:    op.String(),
 			Label:   label,
@@ -321,8 +331,68 @@ func (t *OpsTracer) GetCallStack() *OpsCallFrame {
 	return &t.callstack
 }
 
+func toPbCallTrace(in *OpsCallFrame) *protobuf.StackFrame {
+	if in == nil {
+		return &protobuf.StackFrame{}
+	}
+
+	var calls []*protobuf.StackFrame
+	if in.Calls != nil {
+		calls = make([]*protobuf.StackFrame, len(in.Calls))
+		for i, c := range in.Calls {
+			calls[i] = toPbCallTrace(c)
+		}
+	}
+	return &protobuf.StackFrame{
+		Type:            in.Type,
+		Label:           in.Label,
+		From:            in.From,
+		To:              in.To,
+		ContractCreated: in.ContractCreated,
+		Value:           in.Value,
+		Input:           in.Input,
+		Error:           in.Error,
+		Calls:           calls,
+	}
+
+}
+
+func dfs(node *protobuf.StackFrame, prefix string, sks *[]types.PlainStackFrame) {
+	if node == nil {
+		return
+	}
+	*sks = append(*sks, types.PlainStackFrame{
+		FrameId:         prefix,
+		Type:            node.Type,
+		Label:           node.Label,
+		From:            node.From,
+		To:              node.To,
+		ContractCreated: node.ContractCreated,
+		Value:           node.Value,
+		Input:           node.Input,
+		Error:           node.Error,
+		ChildrenCount:   int32(len(node.GetCalls())),
+	})
+	for i, call := range node.GetCalls() {
+		cPrefix := fmt.Sprintf("%s_%d", prefix, i)
+		dfs(call, cPrefix, sks)
+	}
+}
+
 func (t *OpsTracer) GetResult() (json.RawMessage, error) {
-	res, err := json.Marshal(t.GetCallStack())
+	result := t.GetCallStack()
+	if t.plain {
+		pbTrace := toPbCallTrace(result)
+		ptxs := make([]types.PlainStackFrame, 0)
+		dfs(pbTrace, "0", &ptxs)
+		res, err := json.Marshal(result)
+		if err != nil {
+			return nil, err
+		}
+		return res, t.reason
+	}
+
+	res, err := json.Marshal(result)
 	if err != nil {
 		return nil, err
 	}
