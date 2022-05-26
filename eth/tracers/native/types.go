@@ -385,7 +385,7 @@ func (t *OpsTracer) GetResult() (json.RawMessage, error) {
 		pbTrace := toPbCallTrace(result)
 		ptxs := make([]types.PlainStackFrame, 0)
 		dfs(pbTrace, "0", &ptxs)
-		res, err := json.Marshal(result)
+		res, err := json.Marshal(ptxs)
 		if err != nil {
 			return nil, err
 		}
