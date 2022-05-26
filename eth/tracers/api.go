@@ -22,6 +22,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/eth/tracers/native"
+	"github.com/ethereum/go-ethereum/eth/tracers/protobuf"
 	"io/ioutil"
 	"math/big"
 	"os"
@@ -171,6 +173,7 @@ type TraceConfig struct {
 	Tracer  *string
 	Timeout *string
 	Reexec  *uint64
+	Plain   bool
 }
 
 // TraceCallConfig is the config for traceCall API. It holds one more
@@ -900,12 +903,14 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 		tracer    vm.EVMLogger
 		err       error
 		txContext = core.NewEVMTxContext(message)
+		plain     = false
 	)
 	switch {
 	case config == nil:
 		tracer = vm.NewStructLogger(nil)
 	case config.Tracer != nil:
 		// Define a meaningful timeout of a single transaction trace
+		plain = config.Plain
 		timeout := defaultTraceTimeout
 		if config.Timeout != nil {
 			if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
@@ -962,13 +967,93 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 			ReturnValue: returnVal,
 			StructLogs:  ethapi.FormatLogs(tracer.StructLogs()),
 		}, nil
-
+	case *native.OpsTracer:
+		result := tracer.GetCallStack()
+		if plain {
+			pbTrace := toPbCallTrace(result)
+			ptxs := make([]PlainStackFrame, 0)
+			dfs(pbTrace, "0", &ptxs)
+			return PlainTraceByTx{
+				BlockNumber:      vmctx.BlockNumber.Uint64(),
+				TransactionHash:  txctx.TxHash.String(),
+				TransactionIndex: uint64(txctx.TxIndex),
+				PlainTraces:      ptxs,
+			}, nil
+		}
+		return result, nil
 	case Tracer:
 		return tracer.GetResult()
 
 	default:
 		panic(fmt.Sprintf("bad tracer type %T", tracer))
 	}
+}
+func dfs(node *protobuf.StackFrame, prefix string, sks *[]PlainStackFrame) {
+	if node == nil {
+		return
+	}
+	*sks = append(*sks, PlainStackFrame{
+		FrameId:         prefix,
+		Type:            node.Type,
+		Label:           node.Label,
+		From:            node.From,
+		To:              node.To,
+		ContractCreated: node.ContractCreated,
+		Value:           node.Value,
+		Input:           node.Input,
+		Error:           node.Error,
+		ChildrenCount:   int32(len(node.GetCalls())),
+	})
+	for i, call := range node.GetCalls() {
+		cPrefix := fmt.Sprintf("%s_%d", prefix, i)
+		dfs(call, cPrefix, sks)
+	}
+}
+
+type PlainTraceByTx struct {
+	BlockNumber      uint64            `json:"blockNumber"`
+	TransactionHash  string            `json:"transactionHash"`
+	TransactionIndex uint64            `json:"transactionIndex"`
+	PlainTraces      []PlainStackFrame `json:"plainTraces"`
+}
+
+type PlainStackFrame struct {
+	FrameId         string `parquet:"fieldid=0,logical=String" json:"frameId"`
+	Type            string `parquet:"fieldid=1,logical=String" json:"type"`
+	Label           string `parquet:"fieldid=2,logical=String" json:"label"`
+	From            string `parquet:"fieldid=3,logical=String" json:"from"`
+	To              string `parquet:"fieldid=4,logical=String" json:"to"`
+	ContractCreated string `parquet:"fieldid=5,logical=String" json:"contractCreated"`
+	Value           string `parquet:"fieldid=6,logical=String" json:"value"`
+	Input           string `parquet:"fieldid=7,logical=String" json:"input"`
+	Error           string `parquet:"fieldid=8,logical=String" json:"error"`
+	ChildrenCount   int32  `parquet:"fieldid=9" json:"childrenCount"`
+}
+
+func toPbCallTrace(in *native.OpsCallFrame) *protobuf.StackFrame {
+	if in == nil {
+		return &protobuf.StackFrame{}
+	}
+
+	var calls []*protobuf.StackFrame
+	if in.Calls != nil {
+		calls = make([]*protobuf.StackFrame, len(in.Calls))
+		for i, c := range in.Calls {
+			calls[i] = toPbCallTrace(c)
+		}
+	}
+	return &protobuf.StackFrame{
+		Type:            in.Type,
+		Label:           in.Label,
+		From:            in.From,
+		To:              in.To,
+		ContractCreated: in.ContractCreated,
+		Value:           in.Value,
+		Input:           in.Input,
+		Error:           in.Error,
+		Calls:           calls,
+	}
+
 }
 
 // APIs return the collection of RPC services the tracer package offers.
