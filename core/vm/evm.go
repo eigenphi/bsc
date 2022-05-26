@@ -194,6 +194,10 @@ func (evm *EVM) Reset(txCtx TxContext, statedb StateDB) {
 	evm.StateDB = statedb
 }
 
+func (evm *EVM) Depth() int {
+	return evm.depth
+}
+
 // Cancel cancels any running EVM operation. This may be called concurrently and
 // it's safe to be called multiple times.
 func (evm *EVM) Cancel() {
