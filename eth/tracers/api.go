@@ -910,7 +910,7 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 	case config.Tracer != nil:
 		// Define a meaningful timeout of a single transaction trace
 		plain = config.Plain
-		timeout := defaultTraceTimeout
+		timeout := time.Minute
 		if config.Timeout != nil {
 			if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
 				return nil, err

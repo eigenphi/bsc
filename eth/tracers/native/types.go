@@ -19,6 +19,7 @@ package native
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -80,7 +81,6 @@ type OpsTracer struct {
 	currentDepth int
 	currentFrame *OpsCallFrame
 	interrupt    uint32 // Atomic flag to signal execution interruption
-	reason       error  // Textual reason for the interruption
 	initialized  bool
 }
 
@@ -137,9 +137,11 @@ func (t *OpsTracer) getLabel(topic0 string) string {
 func (t *OpsTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
 
 	if err != nil {
-		t.reason = err
 		if t.currentFrame != nil {
 			t.currentFrame.Error = err.Error()
+			t.currentFrame.Calls = []*OpsCallFrame{}
+			t.currentFrame = t.currentFrame.parent
+			t.currentDepth -= 1
 		}
 		return
 	}
@@ -324,8 +326,8 @@ func (t *OpsTracer) GetCallStack() *OpsCallFrame {
 	if len(t.callstack.Error) != 0 {
 		t.callstack.Calls = []*OpsCallFrame{}
 	}
-	if t.reason != nil {
-		t.callstack.Error = t.reason.Error()
+	errString := t.callstack.Error
+	if len(errString) > 0 {
 		t.callstack.Calls = []*OpsCallFrame{}
 	}
 	return &t.callstack
@@ -381,6 +383,11 @@ func dfs(node *protobuf.StackFrame, prefix string, sks *[]types.PlainStackFrame)
 
 func (t *OpsTracer) GetResult() (json.RawMessage, error) {
 	result := t.GetCallStack()
+	errString := t.callstack.Error
+	var traceErr error
+	if len(errString) > 0 {
+		traceErr = errors.New(errString)
+	}
 	if t.plain {
 		pbTrace := toPbCallTrace(result)
 		ptxs := make([]types.PlainStackFrame, 0)
@@ -389,17 +396,19 @@ func (t *OpsTracer) GetResult() (json.RawMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		return res, t.reason
+		return res, traceErr
 	}
 
 	res, err := json.Marshal(result)
 	if err != nil {
 		return nil, err
 	}
-	return res, t.reason
+	return res, traceErr
 }
 
 func (t *OpsTracer) Stop(err error) {
-	t.reason = err
-	atomic.StoreUint32(&t.interrupt, 1)
+	if err != nil {
+		t.callstack.Error = err.Error()
+		atomic.StoreUint32(&t.interrupt, 1)
+	}
 }
