@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -172,6 +173,7 @@ type TraceConfig struct {
 	Tracer  *string
 	Timeout *string
 	Reexec  *uint64
+	Plain   bool
 }
 
 // TraceCallConfig is the config for traceCall API. It holds one more
@@ -900,12 +902,14 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 		tracer    vm.EVMLogger
 		err       error
 		txContext = core.NewEVMTxContext(message)
+		plain     = false
 	)
 	switch {
 	case config == nil:
 		tracer = logger.NewStructLogger(nil)
 	case config.Tracer != nil:
 		// Define a meaningful timeout of a single transaction trace
+		plain = config.Plain
 		timeout := defaultTraceTimeout
 		if config.Timeout != nil {
 			if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
@@ -962,13 +966,28 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 			ReturnValue: returnVal,
 			StructLogs:  ethapi.FormatLogs(tracer.StructLogs()),
 		}, nil
-
 	case Tracer:
-		return tracer.GetResult()
+		result, err := tracer.GetResult()
+		if !plain {
+			return result, err
+		}
+		return PlainTraceByTx{
+			BlockNumber:      vmctx.BlockNumber.Uint64(),
+			TransactionHash:  txctx.TxHash.String(),
+			TransactionIndex: uint64(txctx.TxIndex),
+			PlainTraces:      result,
+		}, err
 
 	default:
 		panic(fmt.Sprintf("bad tracer type %T", tracer))
 	}
+}
+
+type PlainTraceByTx struct {
+	BlockNumber      uint64          `json:"blockNumber"`
+	TransactionHash  string          `json:"transactionHash"`
+	TransactionIndex uint64          `json:"transactionIndex"`
+	PlainTraces      json.RawMessage `json:"plainTraces"`
 }
 
 // APIs return the collection of RPC services the tracer package offers.
