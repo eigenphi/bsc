@@ -116,7 +116,10 @@ func getLogValueHex(stack *vm.Stack, memory *vm.Memory) string {
 	return hex.EncodeToString(memory.Data()[offset : offset+length])
 }
 func (t *OpsTracer) isPrecompiled(env *vm.EVM, addr common.Address) bool {
-	activePrecompiles := vm.ActivePrecompiles(env.ChainConfig().Rules(env.Context.BlockNumber))
+	// `isPostMerge` is stolen from internal/ethapi/api.go
+	isPostMerge := env.Context.Difficulty.Cmp(common.Big0) == 0
+	activePrecompiles := vm.ActivePrecompiles(
+		env.ChainConfig().Rules(env.Context.BlockNumber, isPostMerge))
 
 	for _, p := range activePrecompiles {
 		if p == addr {
