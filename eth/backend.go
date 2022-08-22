@@ -205,10 +205,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TrieDirtyLimit:     config.TrieDirtyCache,
 			TrieDirtyDisabled:  config.NoPruning,
 			TrieTimeLimit:      config.TrieTimeout,
-			NoTries:            config.TriesVerifyMode != core.LocalVerify,
-			SnapshotLimit:      config.SnapshotCache,
-			TriesInMemory:      config.TriesInMemory,
-			Preimages:          config.Preimages,
+			//NoTries:            config.TriesVerifyMode != core.LocalVerify,
+			NoTries:       false,
+			SnapshotLimit: config.SnapshotCache,
+			TriesInMemory: config.TriesInMemory,
+			Preimages:     config.Preimages,
 		}
 	)
 	bcOps := make([]core.BlockChainOption, 0)
