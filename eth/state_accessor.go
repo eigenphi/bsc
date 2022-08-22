@@ -176,7 +176,7 @@ func (eth *Ethereum) stateAtTransaction(block *types.Block, txIndex int, reexec 
 	if parent == nil {
 		return nil, vm.BlockContext{}, nil, fmt.Errorf("parent %#x not found", block.ParentHash())
 	}
-	log.Info("parent block number", parent.Number().Int64())
+	log.Info("parent block", "number", parent.Number().Int64())
 	// Lookup the statedb of parent block from the live database,
 	// otherwise regenerate it on the flight.
 	statedb, err := eth.StateAtBlock(parent, reexec, nil, true, false)
@@ -189,7 +189,7 @@ func (eth *Ethereum) stateAtTransaction(block *types.Block, txIndex int, reexec 
 	// Recompute transactions up to the target index.
 	signer := types.MakeSigner(eth.blockchain.Config(), block.Number())
 	for idx, tx := range block.Transactions() {
-		log.Info("applying tx", tx.Hash().Hex())
+		log.Info("applying tx", "txHash", tx.Hash().Hex())
 		// Assemble the transaction call message and return if the requested offset
 		msg, _ := tx.AsMessage(signer, block.BaseFee())
 		txContext := core.NewEVMTxContext(msg)
