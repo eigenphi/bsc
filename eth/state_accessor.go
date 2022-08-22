@@ -183,6 +183,7 @@ func (eth *Ethereum) stateAtTransaction(block *types.Block, txIndex int, reexec 
 	if err != nil {
 		return nil, vm.BlockContext{}, nil, err
 	}
+	log.Info("state db", "no trie?", statedb.NoTrie())
 	if txIndex == 0 && len(block.Transactions()) == 0 {
 		return nil, vm.BlockContext{}, statedb, nil
 	}
@@ -192,6 +193,7 @@ func (eth *Ethereum) stateAtTransaction(block *types.Block, txIndex int, reexec 
 		log.Info("applying tx", "txHash", tx.Hash().Hex())
 		// Assemble the transaction call message and return if the requested offset
 		msg, _ := tx.AsMessage(signer, block.BaseFee())
+		log.Info("state db exist", "from", statedb.Exist(msg.From()))
 		txContext := core.NewEVMTxContext(msg)
 		context := core.NewEVMBlockContext(block.Header(), eth.blockchain, nil)
 		if idx == txIndex {
