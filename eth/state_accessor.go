@@ -57,6 +57,8 @@ func (eth *Ethereum) StateAtBlock(block *types.Block, reexec uint64, base *state
 	// Check the live database first if we have the state fully available, use that.
 	if checkLive {
 		statedb, err = eth.blockchain.StateAt(block.Root())
+		log.Info("check live", "block root", block.Root().String(),
+			"err", err)
 		if err == nil {
 			return statedb, nil
 		}
@@ -176,7 +178,8 @@ func (eth *Ethereum) stateAtTransaction(block *types.Block, txIndex int, reexec 
 	if parent == nil {
 		return nil, vm.BlockContext{}, nil, fmt.Errorf("parent %#x not found", block.ParentHash())
 	}
-	log.Info("parent block", "number", parent.Number().Int64())
+	log.Info("parent block", "number", parent.Number().Int64(),
+		"root", parent.Root().String())
 	// Lookup the statedb of parent block from the live database,
 	// otherwise regenerate it on the flight.
 	statedb, err := eth.StateAtBlock(parent, reexec, nil, true, false)
