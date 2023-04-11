@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/signer/fourbyte"
 	"github.com/holiman/uint256"
 	"math/big"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -413,4 +414,12 @@ func (t *OpsTracer) GetResult() (json.RawMessage, error) {
 func (t *OpsTracer) Stop(err error) {
 	t.reason = err
 	atomic.StoreUint32(&t.interrupt, 1)
+}
+
+func uintToHex(n uint64) string {
+	return "0x" + strconv.FormatUint(n, 16)
+}
+
+func addrToHex(a common.Address) string {
+	return strings.ToLower(a.Hex())
 }
