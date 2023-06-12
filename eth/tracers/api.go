@@ -176,6 +176,7 @@ type TraceConfig struct {
 	// Config specific to given tracer. Note struct logger
 	// config are historically embedded in main object.
 	TracerConfig json.RawMessage
+	Plain        bool
 }
 
 // TraceCallConfig is the config for traceCall API. It holds one more
@@ -940,7 +941,23 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 	if _, err = core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas())); err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
-	return tracer.GetResult()
+	result, err := tracer.GetResult()
+	if !config.Plain {
+		return result, err
+	}
+	return PlainTraceByTx{
+		BlockNumber:      vmctx.BlockNumber.Uint64(),
+		TransactionHash:  txctx.TxHash.String(),
+		TransactionIndex: uint64(txctx.TxIndex),
+		PlainTraces:      result,
+	}, err
+}
+
+type PlainTraceByTx struct {
+	BlockNumber      uint64          `json:"blockNumber"`
+	TransactionHash  string          `json:"transactionHash"`
+	TransactionIndex uint64          `json:"transactionIndex"`
+	PlainTraces      json.RawMessage `json:"plainTraces"`
 }
 
 // APIs return the collection of RPC services the tracer package offers.
